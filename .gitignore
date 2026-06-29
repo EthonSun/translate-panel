@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+# 永不提交任何密钥（key 实际在 ~/.config/deepseek/api_key，不在本目录，这里只是保险）
+*api_key*
+*.key
