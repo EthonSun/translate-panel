@@ -12,7 +12,7 @@ else
     # 字号调大、加内边距、Nord 深色背景（与脚本里的 Nord 配色一致）。
     exec foot --app-id="$APPID" --title="划词翻译" \
         -o font="monospace:size=14" \
-        -o pad="20x18" \
+        -o pad="5x12" \
         -o background="2e3440" \
         -o foreground="d8dee9" \
         -o "cursor.style=beam" \

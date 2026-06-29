@@ -121,6 +121,76 @@ def normalize(text):
     return text
 
 
+_PUNCT = " .,!?;:。，！？；：、\"'()[]{}<>…—\n\t"
+
+
+def is_word(text):
+    # 单词/短语才查词典：英文 ≤3 词、中文 ≤6 字，且无句中/句末标点
+    t = text.strip(_PUNCT)
+    if not t or len(t) > 40:
+        return False
+    if CJK.search(t):
+        cjk = sum(1 for c in t if CJK.match(c))
+        return cjk <= 6 and not re.search(r"[，。！？；、]", t)
+    return len(t.split()) <= 3 and not re.search(r"[.!?;]", t)
+
+
+def _drop_examples(sense):
+    # 例句在冒号（英/中）之后，丢掉；只留释义
+    i = min([x for x in (sense.find(":"), sense.find("：")) if x >= 0], default=-1)
+    if i >= 0:
+        sense = sense[:i]
+    return sense.strip(" ;；,，.")
+
+
+def _tidy_section(d):
+    # 整理一个同形词段：音标成行、按义项编号分行、去例句与 idiom 段
+    d = d.strip()
+    m = re.match(r"^(/[^/]*/)\s+(.*)$", d, re.S)
+    phon, body = (m.group(1), m.group(2)) if m else ("", d)
+    parts = re.split(r"\s{2,}(\d+)\s+", body)       # 在 "  N " 处切义项
+    head = [phon] if phon else []
+    if len(parts) == 1:
+        senses = [_drop_examples(body)]
+    else:
+        if parts[0].strip():
+            head.append(parts[0].strip())           # 词性 adj/n…
+        senses = []
+        for i in range(1, len(parts), 2):
+            txt = parts[i + 1].strip()
+            if txt.startswith("(idm"):              # 习语段太乱，丢掉
+                continue
+            txt = _drop_examples(txt)
+            if txt:
+                senses.append(parts[i] + " " + txt)
+    return "\n".join(head) + ("\n" if head else "") + "\n\n".join(s for s in senses if s)
+
+
+def tidy_def(d):
+    # ponytail: 牛津英汉格式专用整理。先按同形词（空行分隔，各以 /音标/ 起头）分段、
+    #           去重复段，再逐段整理；非牛津词典基本原样返回。
+    secs, seen = [], set()
+    for s in re.split(r"\n\s*\n", d.strip()):
+        t = _tidy_section(s)
+        if t and t not in seen:
+            seen.add(t)
+            secs.append(t)
+    return "\n\n".join(secs)
+
+
+def dict_lookup(text):
+    # 查本地 StarDict（sdcv），-e 只认精确匹配（避免把 Alveolata 模糊成 alveolar）
+    word = text.strip(_PUNCT)
+    try:
+        out = subprocess.run(["sdcv", "-n", "-e", "-j", word],
+                             capture_output=True, timeout=5)
+        data = json.loads(out.stdout.decode("utf-8", "replace") or "[]")
+    except Exception:
+        return None
+    parts = [tidy_def(e["definition"]) for e in data if e.get("definition", "").strip()]
+    return "\n\n".join(parts) if parts else None
+
+
 def detect_target(text):
     # 含中日韩 → 译成英文；否则 → 译成中文
     return "English" if CJK.search(text) else "Chinese (Simplified)"
@@ -188,17 +258,17 @@ def badge(original):
     return "中文 → EN" if CJK.search(original) else "EN → 中文"
 
 
-def render(status="", original="", result="", err=""):
+def render(status="", original="", result="", err="", label="译文"):
     cols = shutil.get_terminal_size((68, 22)).columns
-    inner = max(20, cols - 4)
-    P = "  "
+    inner = max(20, cols - 2)
+    P = " "
     o = [CLEAR]
 
     # 标题栏：整行底色，左标题 + 右方向徽标
     left = BOLD + fg(FROST) + " ✦  " + fg(SNOW) + "划词翻译 "
     right = (fg(FROST2) + badge(original) + " ") if original else ""
     gap = max(1, cols - disp_len(left) - disp_len(right))
-    o.append(bg(N_BAR) + left + " " * gap + right + RESET + "\n\n")
+    o.append(bg(N_BAR) + left + " " * gap + right + RESET + "\n")
 
     if status:
         o.append(P + fg(N_FAINT) + status + RESET + "\n")
@@ -210,10 +280,11 @@ def render(status="", original="", result="", err=""):
         for ln in wrap(original, inner):
             o.append(P + fg(N_FAINT) + ln + RESET + "\n")
         o.append("\n")
-        o.append(P + fg(GREEN) + "▎ " + fg(N_MUTED) + "译文" + RESET + "\n")
+        o.append(P + fg(GREEN) + "▎ " + fg(N_MUTED) + label + RESET + "\n")
         if result:
+            style = "" if label == "词典" else BOLD   # 词典内容较长，不加粗
             for ln in wrap(result, inner):
-                o.append(P + BOLD + fg(SNOW) + ln + RESET + "\n")
+                o.append(P + style + fg(SNOW) + ln + RESET + "\n")
         elif err:
             for ln in wrap(err, inner):
                 o.append(P + fg(RED) + ln + RESET + "\n")
@@ -269,6 +340,12 @@ def main():
         original = normalize(sel)[:MAX_LEN]
         last_done = sel
         if not original or len(original) < MIN_LEN:
+            continue
+        # 单词/短语先查本地词典；命中显示释义，否则（含整句）走 DeepSeek
+        defn = dict_lookup(original) if is_word(original) else None
+        if defn:
+            last_result = defn
+            render("", original=original, result=defn, label="词典")
             continue
         render("", original=original)   # 先显示原文 + “翻译中…”
         try:
