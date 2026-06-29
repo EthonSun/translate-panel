@@ -48,11 +48,14 @@ Mod+Z hotkey-overlay-title="Toggle Translate Panel" { spawn "sh" "-c" "exec ~/.c
 window-rule {
     match app-id=r#"^transpanel$"#
     open-floating true
-    default-column-width { fixed 560; }
-    default-window-height { fixed 360; }
-    default-floating-position x=16 y=16 relative-to="bottom-left"
+    default-column-width { fixed 340; }
+    default-window-height { fixed 440; }
+    default-floating-position x=20 y=20 relative-to="bottom-left"
 }
 ```
+
+面板的字号 / 内边距 / 配色在 `toggle.sh` 启动 foot 的 `-o` 参数里（`font=monospace:size=14`、
+`pad=20x18`、Nord 背景）。窗口大小在上面的 window-rule，配色排版在 `translate.py`。
 
 niri 监听配置文件，保存即热重载（可先 `niri validate -c ~/.config/niri/config.kdl`）。
 

@@ -9,5 +9,12 @@ SCRIPT="$HOME/.config/niri/translate/translate.py"
 if pgrep -f "foot --app-id=$APPID" >/dev/null 2>&1; then
     pkill -f "foot --app-id=$APPID"
 else
-    exec foot --app-id="$APPID" --title="划词翻译" python3 "$SCRIPT"
+    # 字号调大、加内边距、Nord 深色背景（与脚本里的 Nord 配色一致）。
+    exec foot --app-id="$APPID" --title="划词翻译" \
+        -o font="monospace:size=14" \
+        -o pad="20x18" \
+        -o background="2e3440" \
+        -o foreground="d8dee9" \
+        -o "cursor.style=beam" \
+        python3 "$SCRIPT"
 fi
